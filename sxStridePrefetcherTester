@@ -58,5 +58,10 @@ class StridePrefetcher(val max_entries: Int, val table_size: Int, val stride_wid
     ram(replace_index)(1) := io.address
     ram(replace_index)(2) := oldest_entry + 1.U
   }
-
+// Calculate stride:
+  val stride = io.address.asSInt() - prev_address.asSInt()
+  
+  // Store current address and stride:
+  prev_address := io.address
+  prev_stride := stride
 }

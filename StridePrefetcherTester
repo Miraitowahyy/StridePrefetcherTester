@@ -1,0 +1,35 @@
+package prefetcher
+
+import chisel3._
+import chisel3.iotesters.PeekPokeTester
+import chisel3.util._
+
+class StridePrefetcherTest(dut: StridePrefetcher) extends PeekPokeTester(dut) {
+  // Test sequential access trace sequence:
+  for (i <- 0 until 10) {
+    val pc = 0x1000
+    val address = i * 4
+    poke(dut.io.pc, pc)
+    poke(dut.io.address, address)
+    expect(dut.io.prefetched_address(0), address + dut.stride_width)
+    step(1)
+  }
+
+  // Test non-sequential access trace sequence:
+  for (i <- 0 until 10) {
+    val pc = 0x2000
+    val address = i * 8
+    poke(dut.io.pc, pc)
+    poke(dut.io.address, address)
+    if (i < 8) {
+      expect(dut.io.prefetched_address(0), address + dut.stride_width)
+    }
+    step(1)
+  }
+}
+
+object StridePrefetcherTest extends App {
+  chisel3.iotesters.Driver(() => new StridePrefetcher(4, 3, 2)) { dut =>
+    new StridePrefetcherTest(dut)
+  }
+}

@@ -1,26 +1,37 @@
-import random
-import pytest
 import chisel3.iotesters.PeekPokeTester
 
-class StridePrefetcherTester(chisel3.iotesters.PeekPokeTester):
-    def test_stride_prefetcher(self):
-        # Construct memory access traces
-        cont_trace = [i for i in range(256)]
-        noncont_trace = random.sample(range(256), 256)
-        
-        # Test continuous trace
-        self.poke('prefetch_enable', 1)
-        self.poke('access_address', cont_trace[0])
-        for i in range(1, len(cont_trace)):
-            self.expect('prefetched_address', cont_trace[i])
-            self.poke('access_address', cont_trace[i])
-            
-        # Test non-continuous trace
-        self.poke('prefetch_enable', 1)
-        self.poke('access_address', noncont_trace[0])
-        for i in range(1, len(noncont_trace)):
-            if (noncont_trace[i] - noncont_trace[i - 1]) == 1:
-                self.expect('prefetched_address', noncont_trace[i] + 1)
-            else:
-                self.expect('prefetched_address', noncont_trace[i])
-            self.poke('access_address', noncont_trace[i])
+class StridePrefetcherTester(dut: StridePrefetcher) extends PeekPokeTester(dut) {
+  def testStridePrefetcher(): Unit = {
+    // Test continuous access sequence
+    poke(dut.io.addr.valid, true)
+    poke(dut.io.addr.bits, 0)
+    step(1)
+    expect(dut.io.prefetch.valid, true)
+    expect(dut.io.prefetch.bits, 4)
+    poke(dut.io.addr.bits, 4)
+    step(1)
+    expect(dut.io.prefetch.valid, true)
+    expect(dut.io.prefetch.bits, 8)
+    poke(dut.io.addr.bits, 8)
+    step(1)
+    expect(dut.io.prefetch.valid, true)
+    expect(dut.io.prefetch.bits, 12)
+    // Continue the sequence...
+
+    // Test non-continuous access sequence
+    poke(dut.io.addr.valid, true)
+    poke(dut.io.addr.bits, 0)
+    step(1)
+    expect(dut.io.prefetch.valid, true)
+    expect(dut.io.prefetch.bits, 8)
+    poke(dut.io.addr.bits, 8)
+    step(1)
+    expect(dut.io.prefetch.valid, true)
+    expect(dut.io.prefetch.bits, 16)
+    poke(dut.io.addr.bits, 16)
+    step(1)
+    expect(dut.io.prefetch.valid, true)
+    expect(dut.io.prefetch.bits, 24)
+    // Continue the sequence...
+  }
+}

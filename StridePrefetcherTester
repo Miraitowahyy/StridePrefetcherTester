@@ -1,96 +1,33 @@
-import chisel3._
-import chisel3.util._
 import chisel3.iotesters._
+import chisel3.util._
+import scala.collection.mutable.ArrayBuffer
 
-class BenchmarkTest extends Module {
-  val io = IO(new Bundle {
-    val memAddr = Input(UInt(32.W))
-    val memData = Output(UInt(32.W))
-  })
+class StridePrefetcherTester(dut: StridePrefetcher) extends PeekPokeTester(dut) {
 
-  // Memory module
-  val mem = Mem(1024, UInt(32.W))
-  io.memData := mem(io.memAddr)
-
-  // Stride prefetcher
-  val stridePrefetcher = Module(new StridePrefetcher)
-  stridePrefetcher.io.memAddr := io.memAddr
-
-  // Record prefetcher prediction results
-  val correctPredictions = RegInit(0.U(32.W))
-  val totalPredictions = RegInit(0.U(32.W))
-  when(stridePrefetcher.io.prefetch.valid) {
-    totalPredictions := totalPredictions + 1.U
-    when(mem(stridePrefetcher.io.prefetch.bits).valid) {
-      correctPredictions := correctPredictions + 1.U
-    }
+val contiguousTrace = ArrayBuffer[BigInt]()
+  for (i <- 0 until 100) {
+    contiguousTrace += i * 4
   }
 
-  // Record memory access results
-  val totalAccesses = RegInit(0.U(32.W))
-  val prefetchAccesses = RegInit(0.U(32.W))
-  when(io.memAddr.valid) {
-    totalAccesses := totalAccesses + 1.U
-    when(stridePrefetcher.io.prefetch.valid) {
-      prefetchAccesses := prefetchAccesses + 1.U
-    }
+
+  val nonContiguousTrace = ArrayBuffer[BigInt]()
+  for (i <- 0 until 100) {
+    nonContiguousTrace += i * 8
   }
 
-  // Print prefetcher prediction results
-  val correctPredictionsReg = RegInit(0.U(32.W))
-  val totalPredictionsReg = RegInit(0.U(32.W))
-  correctPredictionsReg := correctPredictions
-  totalPredictionsReg := totalPredictions
-  printf("Prefetcher prediction accuracy: %f\n", correctPredictionsReg.toDouble / totalPredictionsReg.toDouble)
 
-  // Print prefetcher coverage results
-  val totalAccessesReg = RegInit(0.U(32.W))
-  val prefetchAccessesReg = RegInit(0.U(32.W))
-  totalAccessesReg := totalAccesses
-  prefetchAccessesReg := prefetchAccesses
-  printf("Prefetcher coverage: %f\n", prefetchAccessesReg.toDouble / totalAccessesReg.toDouble)
-}
+  for (i <- 0 until contiguousTrace.size) {
+    poke(dut.io.pc, i)
+    poke(dut.io.address, contiguousTrace(i))
+    step(1)
+    expect(dut.io.prefetch_address, (contiguousTrace(i) + dut.maxStride * 4).U)
+    expect(dut.io.prefetch_valid, true.B)
+  }  // 测试连续访问序列
 
-class StridePrefetcher extends Module {
-  val io = IO(new Bundle {
-    val memAddr = Input(UInt(32.W))
-    val prefetch = Output(Valid(UInt(32.W)))
-  })
 
-  // Stride prefetcher parameters
-  val stride = RegInit(0.U(32.W))
-  val lastAddr = RegInit(0.U(32.W))
-
-  // Prefetch address calculation
-  val nextAddr = lastAddr + stride
-  io.prefetch.bits := nextAddr
-  io.prefetch.valid := true.B
-
-  // Update stride and last address
-  when(io.memAddr.valid) {
-    when(stride === 0.U) {
-      stride := io.memAddr - lastAddr
-    } .otherwise {
-      when(io.memAddr === nextAddr) {
-        stride := io.memAddr - lastAddr
-      } .otherwise {
-        stride := 0.U
-      }
-    }
-    lastAddr := io.memAddr
-  }
-}
-
-object BenchmarkTestDriver extends App {
-  iotesters.Driver.execute(args, () => new BenchmarkTest) {
-    c => new PeekPokeTester(c) {
-      // Memory access pattern
-      for (i <- 0 until 1000) {
-        poke(c.io.memAddr, i.U)
-        expect(c.io.memData, i.U)
-      }
-      // Wait for a few cycles to allow the prefetcher to complete
-      step(10)
-    }
-  }
-}
+  for (i <- 0 until nonContiguousTrace.size) {
+    poke(dut.io.pc, i)
+    poke(dut.io.address, nonContiguousTrace(i))
+    step(1)
+    if (i % 8 == 0) {
+      expect(dut.io.prefetch_address, (nonContiguousTrace(i)

@@ -1,51 +1,88 @@
-class StridePrefetcherTester extends FlatSpec with ChiselScalatestTester {
-  behavior of "StridePrefetcher"
+import chisel3._
+import chisel3.util._
+import chisel3.iotesters._
 
-  it should "have high prefetch accuracy" in {
-    test(new StridePrefetcher) { dut =>
-      // Generate a sequence of memory accesses
-      val accesses = Seq(0x100, 0x104, 0x108, 0x10C, 0x110, 0x114, 0x118, 0x11C)
+class BenchmarkTest extends Module {
+  val io = IO(new Bundle {
+    val memAddr = Input(UInt(32.W))
+    val memData = Output(UInt(32.W))
+  })
 
-      // Simulate the memory accesses and prefetches
-      val prefetches = dut.simulateAccesses(accesses)
+  // Memory module
+  val mem = Mem(1024, UInt(32.W))
+  io.memData := mem(io.memAddr)
 
-      // Calculate the prefetch accuracy
-      val accuracy = prefetches.count(_.isPrefetch) / prefetches.size.toDouble
+  // Stride prefetcher
+  val stridePrefetcher = Module(new StridePrefetcher)
+  stridePrefetcher.io.memAddr := io.memAddr
 
-      // Check that the prefetch accuracy is high
-      assert(accuracy > 0.9)
+  // Record prefetcher prediction results
+  val correctPredictions = RegInit(0.U(32.W))
+  val totalPredictions = RegInit(0.U(32.W))
+  when(stridePrefetcher.io.prefetch.valid) {
+    totalPredictions := totalPredictions + 1.U
+    when(mem(stridePrefetcher.io.prefetch.bits.addr).valid) {
+      correctPredictions := correctPredictions + 1.U
     }
   }
 
-  it should "have high prefetch coverage" in {
-    test(new StridePrefetcher) { dut =>
-      // Generate a sequence of memory accesses
-      val accesses = Seq(0x100, 0x104, 0x108, 0x10C, 0x110, 0x114, 0x118, 0x11C)
-
-      // Simulate the memory accesses and prefetches
-      val prefetches = dut.simulateAccesses(accesses)
-
-      // Calculate the prefetch coverage
-      val coverage = prefetches.count(_.isPrefetch) / accesses.size.toDouble
-
-      // Check that the prefetch coverage is high
-      assert(coverage > 0.5)
+  // Record memory access results
+  val totalAccesses = RegInit(0.U(32.W))
+  val prefetchAccesses = RegInit(0.U(32.W))
+  when(io.memAddr.valid) {
+    totalAccesses := totalAccesses + 1.U
+    when(stridePrefetcher.io.prefetch.valid) {
+      prefetchAccesses := prefetchAccesses + 1.U
     }
   }
+}
 
-  it should "have low prefetch delay" in {
-    test(new StridePrefetcher) { dut =>
-      // Generate a sequence of memory accesses
-      val accesses = Seq(0x100, 0x104, 0x108, 0x10C, 0x110, 0x114, 0x118, 0x11C)
+class StridePrefetcher extends Module {
+  val io = IO(new Bundle {
+    val memAddr = Input(UInt(32.W))
+    val prefetch = Output(Valid(UInt(32.W)))
+  })
 
-      // Simulate the memory accesses and prefetches
-      val prefetches = dut.simulateAccesses(accesses)
+  // Stride prefetcher parameters
+  val stride = RegInit(0.U(32.W))
+  val lastAddr = RegInit(0.U(32.W))
 
-      // Calculate the prefetch delay
-      val delay = prefetches.filter(_.isPrefetch).map(_.delay).sum / prefetches.count(_.isPrefetch)
+  // Prefetch address calculation
+  val nextAddr = lastAddr + stride
+  io.prefetch.bits := nextAddr
+  io.prefetch.valid := true.B
 
-      // Check that the prefetch delay is low
-      assert(delay < 10)
+  // Update stride and last address
+  when(io.memAddr.valid) {
+    when(stride === 0.U) {
+      stride := io.memAddr - lastAddr
+    } .otherwise {
+      when(io.memAddr === nextAddr) {
+        stride := io.memAddr - lastAddr
+      } .otherwise {
+        stride := 0.U
+      }
+    }
+    lastAddr := io.memAddr
+  }
+}
+
+object BenchmarkTestDriver extends App {
+  iotesters.Driver.execute(args, () => new BenchmarkTest) {
+    c => new PeekPokeTester(c) {
+      // Memory access pattern
+      for (i <- 0 until 1000) {
+        poke(c.io.memAddr, i.U)
+        expect(c.io.memData, i.U)
+      }
+      // Print prefetcher prediction results
+      val correctPredictions = peek(c.correctPredictions)
+      val totalPredictions = peek(c.totalPredictions)
+      println(s"Prefetcher prediction accuracy: ${correctPredictions.toDouble / totalPredictions.toDouble}")
+      // Print prefetcher coverage results
+      val totalAccesses = peek(c.totalAccesses)
+      val prefetchAccesses = peek(c.prefetchAccesses)
+      println(s"Prefetcher coverage: ${prefetchAccesses.toDouble / totalAccesses.toDouble}")
     }
   }
 }

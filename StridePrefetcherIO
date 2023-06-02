@@ -1,15 +1,12 @@
-package prefetcher
+import chisel3.iotesters.PeekPokeTester
 
-import chisel3._
-import chisel3.util._
-
-// TODO: update this module to implement stride prefetcher's IO.
-class StridePrefetcherIO(M: Int, N: Int) extends Bundle {
-  val a = Input(Vec(M * N, SInt(32.W)))
-  val b = Input(Vec(M * N, SInt(32.W)))
-
-  val out = Output(Vec(M * N, SInt(32.W)))
-
-  override def cloneType =
-    new StridePrefetcherIO(M, N).asInstanceOf[this.type]
-}
+class StridePrefetcherTest(dut: StridePrefetcher) extends PeekPokeTester(dut) {
+  // Test sequential access trace sequence:
+  for (i <- 0 until 10) {
+    val pc = 0x1000
+    val address = i * 4
+    poke(dut.io.pc, pc)
+    poke(dut.io.address, address)
+    expect(dut.io.prefetched_address(0), address + dut.stride_width)
+    step(1)
+  }

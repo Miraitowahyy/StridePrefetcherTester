@@ -1,12 +1,47 @@
+import random
 import chisel3.iotesters.PeekPokeTester
 
-class StridePrefetcherTest(dut: StridePrefetcher) extends PeekPokeTester(dut) {
-  // Test sequential access trace sequence:
-  for (i <- 0 until 10) {
-    val pc = 0x1000
-    val address = i * 4
-    poke(dut.io.pc, pc)
-    poke(dut.io.address, address)
-    expect(dut.io.prefetched_address(0), address + dut.stride_width)
-    step(1)
+class StridePrefetcherTester(dut: StridePrefetcher) extends PeekPokeTester(dut) {
+
+  // Define test method for continuous memory access sequence
+  def testContinuousAccess(): Unit = {
+    // Set prefetcher parameters
+    poke(dut.io.stride, 1)
+    poke(dut.io.prefetch_depth, 2)
+
+    // Generate memory access trace with continuous addresses
+    val trace = Seq.tabulate(10)(i => i)
+
+    // Send trace to prefetcher and verify results
+    trace.foreach(addr => {
+      poke(dut.io.addr_in, addr)
+      step(1)
+      expect(dut.io.addr_out, addr)
+      expect(dut.io.prefetch1, addr + 1)
+      expect(dut.io.prefetch2, addr + 2)
+    })
   }
+
+  // Define test method for discontinuous memory access sequence
+  def testDiscontinuousAccess(): Unit = {
+    // Set prefetcher parameters
+    poke(dut.io.stride, 2)
+    poke(dut.io.prefetch_depth, 2)
+
+    // Generate memory access trace with discontinuous addresses
+    val trace = Seq.fill(10)(random.nextInt(10))
+
+    // Send trace to prefetcher and verify results
+    trace.foreach(addr => {
+      poke(dut.io.addr_in, addr)
+      step(1)
+      expect(dut.io.addr_out, addr)
+      expect(dut.io.prefetch1, addr + 2)
+      expect(dut.io.prefetch2, addr + 4)
+    })
+  }
+
+  // Run tests
+  testContinuousAccess()
+  testDiscontinuousAccess()
+}

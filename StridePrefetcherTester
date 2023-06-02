@@ -21,7 +21,7 @@ class BenchmarkTest extends Module {
   val totalPredictions = RegInit(0.U(32.W))
   when(stridePrefetcher.io.prefetch.valid) {
     totalPredictions := totalPredictions + 1.U
-    when(mem(stridePrefetcher.io.prefetch.bits.addr).valid) {
+    when(mem(stridePrefetcher.io.prefetch.bits).valid) {
       correctPredictions := correctPredictions + 1.U
     }
   }
@@ -35,6 +35,20 @@ class BenchmarkTest extends Module {
       prefetchAccesses := prefetchAccesses + 1.U
     }
   }
+
+  // Print prefetcher prediction results
+  val correctPredictionsReg = RegInit(0.U(32.W))
+  val totalPredictionsReg = RegInit(0.U(32.W))
+  correctPredictionsReg := correctPredictions
+  totalPredictionsReg := totalPredictions
+  printf("Prefetcher prediction accuracy: %f\n", correctPredictionsReg.toDouble / totalPredictionsReg.toDouble)
+
+  // Print prefetcher coverage results
+  val totalAccessesReg = RegInit(0.U(32.W))
+  val prefetchAccessesReg = RegInit(0.U(32.W))
+  totalAccessesReg := totalAccesses
+  prefetchAccessesReg := prefetchAccesses
+  printf("Prefetcher coverage: %f\n", prefetchAccessesReg.toDouble / totalAccessesReg.toDouble)
 }
 
 class StridePrefetcher extends Module {
@@ -75,14 +89,8 @@ object BenchmarkTestDriver extends App {
         poke(c.io.memAddr, i.U)
         expect(c.io.memData, i.U)
       }
-      // Print prefetcher prediction results
-      val correctPredictions = peek(c.correctPredictions)
-      val totalPredictions = peek(c.totalPredictions)
-      println(s"Prefetcher prediction accuracy: ${correctPredictions.toDouble / totalPredictions.toDouble}")
-      // Print prefetcher coverage results
-      val totalAccesses = peek(c.totalAccesses)
-      val prefetchAccesses = peek(c.prefetchAccesses)
-      println(s"Prefetcher coverage: ${prefetchAccesses.toDouble / totalAccesses.toDouble}")
+      // Wait for a few cycles to allow the prefetcher to complete
+      step(10)
     }
   }
 }

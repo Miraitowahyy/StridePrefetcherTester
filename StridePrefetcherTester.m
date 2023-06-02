@@ -1,0 +1,68 @@
+package prefetcher
+
+import chisel3._
+import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
+
+class StridePrefetcher(val max_entries: Int, val table_size: Int, val stride_width: Int) extends Module {
+  val io = IO(new Bundle {
+    val pc = Input(UInt(32.W))
+    val address = Input(UInt(32.W))
+    val prefetched_address = Output(Vec(stride_width, UInt(32.W)))
+  })
+
+  // Define RAM for storing PC information:
+  val ram = Mem(max_entries, Vec(table_size, UInt(32.W)))
+  
+  // Define variables for storing previous address and stride:
+  val prev_address = Reg(UInt(32.W))
+  val prev_stride = Reg(SInt(stride_width.W))
+  
+  // Find matching entry in the table:
+  val match_entry = Wire(Bool())
+  match_entry := false.B
+  val match_index = Wire(UInt(log2Ceil(max_entries).W))
+  match_index := 0.U
+  for (i <- 0 until max_entries) {
+    when (ram(i)(0) === io.pc) {
+      match_entry := true.B
+      match_index := i.U
+    }
+  }
+
+  // If matching entry is found, prefetch data:
+  when (match_entry) {
+    for (i <- 0 until stride_width) {
+      io.prefetched_address(i) := ram(match_index)(1) + (i.U * prev_stride).asUInt()
+    }
+  }
+
+  // If matching entry is not found, create new entry:
+  when (!match_entry) {
+    val replace_index = Wire(UInt(log2Ceil(max_entries).W))
+    replace_index := 0.U
+    val oldest_entry = Wire(UInt(log2Ceil(max_entries).W))
+    oldest_entry := 0.U
+    for (i <- 0 until max_entries) {
+      when (ram(i)(2) === oldest_entry) {
+        replace_index := i.U
+      }
+      when (ram(i)(2) < ram(oldest_entry)(2)) {
+        oldest_entry := i.U
+      }
+    }
+    for (i <- 0 until stride_width) {
+      io.prefetched_address(i) := io.address + (i.U * prev_stride).asUInt()
+    }
+    ram(replace_index)(0) := io.pc
+    ram(replace_index)(1) := io.address
+    ram(replace_index)(2) := oldest_entry + 1.U
+  }
+  
+  // Calculate stride:
+  val stride = io.address.asSInt() - prev_address.asSInt()
+  
+  // Store current address and stride:
+  prev_address := io.address
+  prev_stride := stride
+}

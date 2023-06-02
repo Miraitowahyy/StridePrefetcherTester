@@ -1,8 +1,4 @@
-package prefetcher
-
-import chisel3._
 import chisel3.iotesters.PeekPokeTester
-import chisel3.util._
 
 class StridePrefetcherTest(dut: StridePrefetcher) extends PeekPokeTester(dut) {
   // Test sequential access trace sequence:

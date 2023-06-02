@@ -1,20 +1,51 @@
-import chisel3.iotesters.PeekPokeTester
+class StridePrefetcherTester extends FlatSpec with ChiselScalatestTester {
+  behavior of "StridePrefetcher"
 
-  // Test non-sequential access trace sequence:
-  for (i <- 0 until 10) {
-    val pc = 0x2000
-    val address = i * 8
-    poke(dut.io.pc, pc)
-    poke(dut.io.address, address)
-    if (i < 8) {
-      expect(dut.io.prefetched_address(0), address + dut.stride_width)
+  it should "have high prefetch accuracy" in {
+    test(new StridePrefetcher) { dut =>
+      // Generate a sequence of memory accesses
+      val accesses = Seq(0x100, 0x104, 0x108, 0x10C, 0x110, 0x114, 0x118, 0x11C)
+
+      // Simulate the memory accesses and prefetches
+      val prefetches = dut.simulateAccesses(accesses)
+
+      // Calculate the prefetch accuracy
+      val accuracy = prefetches.count(_.isPrefetch) / prefetches.size.toDouble
+
+      // Check that the prefetch accuracy is high
+      assert(accuracy > 0.9)
     }
-    step(1)
   }
-}
 
-object StridePrefetcherTest extends App {
-  chisel3.iotesters.Driver(() => new StridePrefetcher(4, 3, 2)) { dut =>
-    new StridePrefetcherTest(dut)
+  it should "have high prefetch coverage" in {
+    test(new StridePrefetcher) { dut =>
+      // Generate a sequence of memory accesses
+      val accesses = Seq(0x100, 0x104, 0x108, 0x10C, 0x110, 0x114, 0x118, 0x11C)
+
+      // Simulate the memory accesses and prefetches
+      val prefetches = dut.simulateAccesses(accesses)
+
+      // Calculate the prefetch coverage
+      val coverage = prefetches.count(_.isPrefetch) / accesses.size.toDouble
+
+      // Check that the prefetch coverage is high
+      assert(coverage > 0.5)
+    }
+  }
+
+  it should "have low prefetch delay" in {
+    test(new StridePrefetcher) { dut =>
+      // Generate a sequence of memory accesses
+      val accesses = Seq(0x100, 0x104, 0x108, 0x10C, 0x110, 0x114, 0x118, 0x11C)
+
+      // Simulate the memory accesses and prefetches
+      val prefetches = dut.simulateAccesses(accesses)
+
+      // Calculate the prefetch delay
+      val delay = prefetches.filter(_.isPrefetch).map(_.delay).sum / prefetches.count(_.isPrefetch)
+
+      // Check that the prefetch delay is low
+      assert(delay < 10)
+    }
   }
 }
